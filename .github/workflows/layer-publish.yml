@@ -17,19 +17,15 @@ on:
         description: '(optional) amd64 or arm64'
         required: false
         type: string
-      prod-release:
-        description: 'Release to dev or prod? (Default: dev)'
+      release-group:
+        description: 'Release to dev or prod? "prod" yields empty value. (Default: dev)'
         required: true
-        default: false
-        type: boolean
+        default: dev
+        type: string
       aws_region:
-        description: 'Deploy to aws region (can be a json list or single region)'
+        description: 'Publish to which AWS region?'
         required: true
         type: string
-
-    secrets:
-      token:
-        required: true
 
 
 permissions:
@@ -37,12 +33,8 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  publish_layer:
     runs-on: ubuntu-latest
-    needs: build
-    strategy:
-      matrix:
-        aws_region: ${{ fromJson(github.event.inputs.aws_region) }}
 
     steps:
 
@@ -51,12 +43,12 @@ jobs:
         run: |
           LAYER_NAME=${{ inputs.layer-name }}
           
-          if [[ -z ${{ inputs.architecture }} ]]; then
+          if [[ -n "${{ inputs.architecture }}" ]]; then
             LAYER_NAME=$LAYER_NAME-${{ inputs.architecture }}
           fi
           
-          if [[ ${{ inputs.release-type }} != "prod" ]]; then
-            LAYER_NAME=$LAYER_NAME-${{ inputs.release-type }}
+          if [[ "${{ inputs.release-group }}" != "prod" ]]; then
+            LAYER_NAME=$LAYER_NAME-${{ inputs.release-group }}
           fi
           
           LAYER_VERSION=${{ inputs.layer-version }}
@@ -70,7 +62,7 @@ jobs:
     
           if [[ $GITHUB_REF_NAME != *$LAYER_VERSION ]]; then
             echo "Tag $GITHUB_REF_NAME doesn't end with $LAYER_VERSION"
-            return 1
+            exit 1
           fi
 
       - name: Download built layer
@@ -82,7 +74,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.PROD_LAMBDA_ROLE_ARN }}
           role-duration-seconds: 1200
-          aws-region: ${{ matrix.aws_region }}
+          aws-region: ${{ inputs.aws_region }}
           mask-aws-account-id: false
 
       - name: Publish Lambda Layer
